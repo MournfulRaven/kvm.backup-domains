@@ -21,3 +21,16 @@ Examples:
 	$ sudo bash kvm.backup-domains.bash -n "vm-name" -c 4 -p /datastore/backup   # Backup 'vm-name' VM, keep '4' copies, backup to '/datastore/backup' folder.
 	$ sudo bash kvm.backup-domains.bash -n "vm-name" -c 4   # Backup 'vm-name' VM, keep '4' copies.
 	$ sudo bash kvm.backup-domains.bash -c 4   # Backup ALL VMs on server, keep '4' copies, use default path to backups.
+
+ATTENTION!
+By default there is a function for mounting NFS share, where backups will be stored. Variables in the beggining of script, contains which server and path to mount, and where to mount.
+	NETNFS_PATH="123.123.123.123:/var/nfs/general"
+	MOUNT_PATH="/datastore"
+To disable this, comment following lines:
+	...
+	mount_nfs   # Comment if NFS mount is not required
+	...
+	...
+	echo "Unmounting mount path" >> $LOG_PATH
+	umount $MOUNT_PATH   # Comment if NFS path is not used
+	...
