@@ -1,0 +1,23 @@
+Script is created to backup KVM virtual machines with libvirt.
+
+By design, it greps all VM's disk files (targets), making snapshots for their state to ensure, no file transactions will be lost. 
+It copies snapshot disk file to backup folder and then merges snapshots. Also it has a cleaning mechanism for old backups.
+
+
+Log file for script is /var/log/kvm.backup-domains.log.
+
+
+Script is getting following parameters:
+	-n	-	Name of VM/Domain to backup. If not provided - script will backup all VMs on this server.
+
+	-c	-	Count of backups to store. If not provided - script is using 6 copies by default. 
+			Script sorting backup folder by name and removing the oldest.
+
+	-p	-	Path to backup folder. If not provided - will use default path "/datam/Backup". 
+			It should be the root folder for backups. Script will create sub-folders for each VM and date of copie.
+
+
+Examples:
+	$ sudo bash kvm.backup-domains.bash -n "vm-name" -c 4 -p /datam/Backup   # Backup 'vm-name' VM, keep '4' copies, backup to '/datam/Backup' folder.
+	$ sudo bash kvm.backup-domains.bash -n "vm-name" -c 4   # Backup 'vm-name' VM, keep '4' copies.
+	$ sudo bash kvm.backup-domains.bash -c 4   # Backup ALL VMs on server, keep '4' copies, use default path to backups.
