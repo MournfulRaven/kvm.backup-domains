@@ -13,11 +13,11 @@ Script is getting following parameters:
 	-c	-	Count of backups to store. If not provided - script is using 6 copies by default. 
 			Script sorting backup folder by name and removing the oldest.
 
-	-p	-	Path to backup folder. If not provided - will use default path "/datam/Backup". 
+	-p	-	Path to backup folder. If not provided - will use default path "/datastore/backup". 
 			It should be the root folder for backups. Script will create sub-folders for each VM and date of copie.
 
 
 Examples:
-	$ sudo bash kvm.backup-domains.bash -n "vm-name" -c 4 -p /datam/Backup   # Backup 'vm-name' VM, keep '4' copies, backup to '/datam/Backup' folder.
+	$ sudo bash kvm.backup-domains.bash -n "vm-name" -c 4 -p /datastore/backup   # Backup 'vm-name' VM, keep '4' copies, backup to '/datastore/backup' folder.
 	$ sudo bash kvm.backup-domains.bash -n "vm-name" -c 4   # Backup 'vm-name' VM, keep '4' copies.
 	$ sudo bash kvm.backup-domains.bash -c 4   # Backup ALL VMs on server, keep '4' copies, use default path to backups.
