@@ -4,8 +4,8 @@
 # Scripted by Valeriy Bachilo
 
 # Usage:
-#	./kvm_backup_vms -n vm-name -c 3 -p /datastore/backup		# will backup just <vm-name> to </datastore/backup> and keep <3> backups
-#	./kvm_backup_vms											# will backup all vm's on this host and keep 6 backups by default
+#	./kvm.backup-domains.sh -n vm-name -c 3 -p /datastore/backup    # will backup just <vm-name> to </datastore/backup> and keep <3> backups
+#	./kvm.backup-domains.sh											# will backup all vm's on this host and keep 6 backups by default
 
 while getopts n:c:p: flag
 do
@@ -294,7 +294,7 @@ if [ -z "$BACKUP_PATH" ]; then
 	BACKUP_PATH="$BACKUP_PATH_DEFAULT"
 fi
 
-mount_nfs   # Comment if NFS mount is not required
+#mount_nfs   # Comment if NFS mount is not required
 
 echo "Backup path is '$BACKUP_PATH'" >> $LOG_PATH
 if [ ! -d $BACKUP_PATH ]; then
@@ -349,7 +349,7 @@ else
 	fi
 fi
 
-echo "Unmounting mount path" >> $LOG_PATH
-umount $MOUNT_PATH   # Comment if NFS path is not used
+#echo "Unmounting mount path" >> $LOG_PATH
+#umount $MOUNT_PATH   # Comment if NFS path is not used
 echo "Script finished job successfully" >> $LOG_PATH
 echo ""
