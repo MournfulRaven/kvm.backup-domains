@@ -7,17 +7,6 @@
 #	./kvm.backup-domains.sh -n vm-name -c 3 -p /datastore/backup    # will backup just <vm-name> to </datastore/backup> and keep <3> backups
 #	./kvm.backup-domains.sh											# will backup all vm's on this host and keep 6 backups by default
 
-while getopts n:c:p: flag
-do
-    case "${flag}" in
-        n) DOMAIN_TO_BACKUP="${OPTARG}";;
-        c) BACKUP_COUNT="${OPTARG}";;
-        p) BACKUP_PATH="${OPTARG}";;
-    esac
-done
-
-BACKUP_DATE=$(date "+%Y-%m-%d.%H-%M")
-
 #############
 # Variables #
 #############
@@ -274,6 +263,17 @@ function backup_shutoff(){
 ############
 ### MAIN ###
 ############
+
+while getopts n:c:p: flag
+do
+    case "${flag}" in
+        n) DOMAIN_TO_BACKUP="${OPTARG}";;
+        c) BACKUP_COUNT="${OPTARG}";;
+        p) BACKUP_PATH="${OPTARG}";;
+    esac
+done
+
+BACKUP_DATE=$(date "+%Y-%m-%d.%H-%M")
 
 echo -e "\n\n" >> $LOG_PATH
 echo "##########################################" >> $LOG_PATH
