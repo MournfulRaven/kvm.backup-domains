@@ -5,6 +5,7 @@
 
 # Usage:
 #	./kvm.backup-domains.sh -n vm-name -c 3 -p /datastore/backup    # will backup just <vm-name> to </datastore/backup> and keep <3> backups
+#	./kvm.backup-domains.sh -f ./config.conf                        # will take parameters from config file
 #	./kvm.backup-domains.sh											# will backup all vm's on this host and keep 6 backups by default
 
 #############
@@ -264,12 +265,13 @@ function backup_shutoff(){
 ### MAIN ###
 ############
 
-while getopts n:c:p: flag
+while getopts n:c:p:f: flag
 do
     case "${flag}" in
         n) DOMAIN_TO_BACKUP="${OPTARG}";;
         c) BACKUP_COUNT="${OPTARG}";;
         p) BACKUP_PATH="${OPTARG}";;
+		f) CONFIG_FILE_PATH="${OPTARG}";;
     esac
 done
 
@@ -279,6 +281,21 @@ echo -e "\n\n" >> $LOG_PATH
 echo "##########################################" >> $LOG_PATH
 echo "# Backup job started at $BACKUP_DATE #" >> $LOG_PATH
 echo "##########################################" >> $LOG_PATH
+
+######################################################################################################
+# If CONFIG_FILE_PATH was not provided - skipping it. If provided - other parameters will be ignored #
+if [ -z "$CONFIG_FILE_PATH" ]; 
+then
+	echo "No CONFIG FILE was provided. Continuing without it" >> $LOG_PATH
+else
+	echo "CONFIG FILE was provided. Ignoring other parameters" >> $LOG_PATH
+	if [ -f "$CONFIG_FILE_PATH" ]; then
+		source "$CONFIG_FILE_PATH"
+	else
+		echo "CONFIG FILE not found. Exiting..." >> $LOG_PATH
+		exit 1
+	fi
+fi
 
 #########################################################################
 # If BACKUP_COUNT was not provided - choosing default "6" copies to keep #
