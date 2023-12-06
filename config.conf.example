@@ -1,0 +1,5 @@
+# config.conf
+#
+DOMAIN_TO_BACKUP="vm-name"
+BACKUP_COUNT="6"
+BACKUP_PATH="/datastore/backup"
