@@ -179,19 +179,7 @@ function backup_running(){
 	echo -e "\tdumping XML configuration:" >> $LOG_PATH
 	echo -e "\t\tvirsh dumpxml '$domain' >'$domain_backup_path_date/$domain.xml'" >> $LOG_PATH
 	virsh dumpxml "$domain" >"$domain_backup_path_date/$domain.xml"
-	
-	#########################
-	# Cleanup older backups #
-	echo -e "\tcleaning up old backups" >> $LOG_PATH
-	old_backups=`ls -r1 "$domain_backup_path" | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}\.[0-9]{2}-[0-9]{2}'`
-	i=1
-	for old_backup in $old_backups; do
-		if [ $i -gt "$backup_count" ]; then
-			echo -e "\t\trm -rf '$domain_backup_path/$old_backup'" >> $LOG_PATH
-			rm -rf "$domain_backup_path/$old_backup"
-		fi
-		i=$[$i+1]
-	done
+	cleanup_old_backups $domain $backup_count
 	echo -e "\tbackup job completed." >> $LOG_PATH
 }
 
@@ -243,6 +231,16 @@ function backup_shutoff(){
 	echo -e "\tdumping XML configuration:" >> $LOG_PATH
 	echo -e "\t\tvirsh dumpxml '$domain' >'$domain_backup_path_date/$domain.xml'" >> $LOG_PATH
 	virsh dumpxml "$domain" >"$domain_backup_path_date/$domain.xml"
+	cleanup_old_backups $domain $backup_count
+	echo -e "\tbackup job completed." >> $LOG_PATH
+}
+
+
+function cleanup_old_backups() {
+	domain=$1
+	backup_count=$2
+	
+	domain_backup_path="$BACKUP_PATH/$domain"
 	
 	#########################
 	# Cleanup older backups #
@@ -257,7 +255,7 @@ function backup_shutoff(){
 		fi
 		i=$[$i+1]
 	done
-	echo -e "\tbackup job completed." >> $LOG_PATH
+	
 }
 
 
