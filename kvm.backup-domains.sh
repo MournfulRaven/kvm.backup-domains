@@ -179,7 +179,9 @@ function backup_running(){
 	echo -e "\tdumping XML configuration:" >> $LOG_PATH
 	echo -e "\t\tvirsh dumpxml '$domain' >'$domain_backup_path_date/$domain.xml'" >> $LOG_PATH
 	virsh dumpxml "$domain" >"$domain_backup_path_date/$domain.xml"
+	
 	cleanup_old_backups $domain $backup_count
+	
 	echo -e "\tbackup job completed." >> $LOG_PATH
 }
 
@@ -231,7 +233,9 @@ function backup_shutoff(){
 	echo -e "\tdumping XML configuration:" >> $LOG_PATH
 	echo -e "\t\tvirsh dumpxml '$domain' >'$domain_backup_path_date/$domain.xml'" >> $LOG_PATH
 	virsh dumpxml "$domain" >"$domain_backup_path_date/$domain.xml"
+	
 	cleanup_old_backups $domain $backup_count
+	
 	echo -e "\tbackup job completed." >> $LOG_PATH
 }
 
