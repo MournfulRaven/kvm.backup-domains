@@ -1,0 +1,26 @@
+# kvm.backup-domains.conf
+#
+# This file is optional and contains variable arrays for script 'kvm.backup-domains.sh'
+# To run script with this config file, use parameter '-f'. Example:
+#    															      ./kvm.backup-domains.sh -f ./kvm.backup-domains.conf
+#
+# All arrays should be the same length. First values of each arrays - parameters for first domain (VM).
+#
+# 'DOMAIN_TO_BACKUP' is array for domains (VMs) which you want to backup;
+# 'BACKUP_COUNT' is integer amount of backups which will be kept, others older backups will be removed;
+#                '6' means, that six backups will be kept. The newest backup will replace the oldest one.
+# 'BACKUP_PATH' is a path to directory, where script will create subdirs for each domain and store backups;
+# 'BACKUP_RELEVANCE_PERIOD' is integer amount of days, during which latest backup will be considered as relevant and newer backups will not be performed (will be skipped).
+#                           '1' means one day. If latest backup is older than '1' day, next backup will be performed.
+#                           '0' means, that next backup will be performed as soon as requested.
+#
+# Example:
+# DOMAIN_TO_BACKUP=(         "domain-1"            "domain-2"            "domain-3"          )
+# BACKUP_COUNT=(             "3"                   "6"                   "6"                 )
+# BACKUP_PATH=(              "/datastore/backup"   "/datastore/backup"   "/datastore/backup" )
+# BACKUP_RELEVANCE_PERIOD=(  "0"                   "2"                   "7"                 )
+#
+DOMAIN_TO_BACKUP=( "domain-1" "domain-2" "domain-3" )
+BACKUP_COUNT=( "3" "6" "6" )
+BACKUP_PATH=( "/datastore/backup" "/datastore/backup" "/datastore/backup" )
+BACKUP_RELEVANCE_PERIOD=( "0" "2" "7" )
