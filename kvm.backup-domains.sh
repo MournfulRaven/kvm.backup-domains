@@ -8,31 +8,18 @@
 #	./kvm.backup-domains.sh -f ./config.conf                        # will take parameters from config file
 #	./kvm.backup-domains.sh											# will backup all vm's on this host and keep 6 backups by default
 
+
 #############
 # Variables #
 #############
 LOG_PATH="/var/log/kvm.backup-domains.log"
-NETNFS_PATH="123.123.123.123:/var/nfs/general"
-MOUNT_PATH="/datastore"
 BACKUP_PATH_DEFAULT="/datastore/backup"
 BACKUP_COUNT_DEFAULT=6
+BACKUP_RELEVANCE_PERIOD_DEFAULT=0    # Number of days
 
 
-function mount_nfs(){
-	echo "Mounting NFS share '$NETNFS_PATH' to '$MOUNT_PATH'" >> $LOG_PATH
-	# checking if local mount path exists
-	if [ ! -d $MOUNT_PATH ]; then
-		echo "ERROR! Local mount path '$MOUNT_PATH' not exists. Exiting..."; >> $LOG_PATH
-		exit 1
-	fi
-	mount $NETNFS_PATH $MOUNT_PATH
-	# checking if after mounting there were any errors
-	if [ $? -ne 0 ]; then
-		echo "ERROR! Failed to mount '$NETNFS_PATH'. Exiting..."; >> $LOG_PATH
-		exit 1
-	fi
-	echo "NFS share mounted" >> $LOG_PATH
-}
+######################################################
+######################################################
 
 
 # Function is getting $DOMAIN for INPUT ($1)
@@ -88,10 +75,11 @@ function get_paths() {
 
 
 # Function called in MAIN to perform backup of running domains
-# Usage:   backup_running $DOMAIN_TO_BACKUP $BACKUP_COUNT
+# Usage:   backup_running $DOMAIN_TO_BACKUP $BACKUP_COUNT $BACKUP_PATH
 function backup_running(){
 	domain=$1
-	backup_count=$2
+	backup_count_to_keep=$2
+	backup_path=$3
 	
 	echo "'$domain':" >> $LOG_PATH
 	echo -e "\tstarting backup job" >> $LOG_PATH
@@ -99,7 +87,7 @@ function backup_running(){
 	##########################################
 	# Creating backup path for domain backup #
 	backup_date=$(date "+%Y-%m-%d.%H-%M")
-	domain_backup_path="$BACKUP_PATH/$domain"
+	domain_backup_path="$backup_path/$domain"
 	domain_backup_path_date="$domain_backup_path/$backup_date"
 	echo -e "\tcreating backup path '$domain_backup_path_date'" >> $LOG_PATH
 	mkdir -p "$domain_backup_path_date"
@@ -180,17 +168,18 @@ function backup_running(){
 	echo -e "\t\tvirsh dumpxml '$domain' >'$domain_backup_path_date/$domain.xml'" >> $LOG_PATH
 	virsh dumpxml "$domain" >"$domain_backup_path_date/$domain.xml"
 	
-	cleanup_old_backups $domain $backup_count
+	cleanup_old_backups $domain $backup_count_to_keep $backup_path
 	
 	echo -e "\tbackup job completed." >> $LOG_PATH
 }
 
 
 # Function called in MAIN to perform backup of shutdown domains
-# Usage:   backup_shutoff $DOMAIN_TO_BACKUP $BACKUP_COUNT
+# Usage:   backup_shutoff $DOMAIN_TO_BACKUP $BACKUP_COUNT $BACKUP_PATH
 function backup_shutoff(){
 	domain=$1
-	backup_count=$2
+	backup_count_to_keep=$2
+	backup_path=$3
 	
 	echo "'$domain':" >> $LOG_PATH
 	echo -e "\tstarting backup job" >> $LOG_PATH
@@ -198,7 +187,7 @@ function backup_shutoff(){
 	##########################################
 	# Creating backup path for domain backup #
 	backup_date=$(date "+%Y-%m-%d.%H-%M")
-	domain_backup_path="$BACKUP_PATH/$domain"
+	domain_backup_path="$backup_path/$domain"
 	domain_backup_path_date="$domain_backup_path/$backup_date"
 	echo -e "\tcreating backup path '$domain_backup_path_date'" >> $LOG_PATH
 	mkdir -p "$domain_backup_path_date"
@@ -234,17 +223,19 @@ function backup_shutoff(){
 	echo -e "\t\tvirsh dumpxml '$domain' >'$domain_backup_path_date/$domain.xml'" >> $LOG_PATH
 	virsh dumpxml "$domain" >"$domain_backup_path_date/$domain.xml"
 	
-	cleanup_old_backups $domain $backup_count
+	cleanup_old_backups $domain $backup_count_to_keep $backup_path
 	
 	echo -e "\tbackup job completed." >> $LOG_PATH
 }
 
-
+# Function to find old backups and remove them
+# Usage:   cleanup_old_backups $DOMAIN_TO_BACKUP $BACKUP_COUNT $BACKUP_PATH
 function cleanup_old_backups() {
 	domain=$1
-	backup_count=$2
+	backup_count_to_keep=$2
+	backup_path=$3
 	
-	domain_backup_path="$BACKUP_PATH/$domain"
+	domain_backup_path="$backup_path/$domain"
 	
 	#########################
 	# Cleanup older backups #
@@ -252,14 +243,36 @@ function cleanup_old_backups() {
 	old_backups=`ls -r1 "$domain_backup_path" | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}\.[0-9]{2}-[0-9]{2}'`
 	i=1
 	for old_backup in $old_backups; do
-		if [ $i -gt "$backup_count" ]; then
+		if [ $i -gt "$backup_count_to_keep" ]; then
 			#echo -e "\t\tremoving old backup: "`basename $old_backup` >> $LOG_PATH
 			echo -e "\t\trm -rf '$domain_backup_path/$old_backup'" >> $LOG_PATH
 			rm -rf "$domain_backup_path/$old_backup"
 		fi
 		i=$[$i+1]
 	done
+}
+
+# Function to calculate difference between today and last backup date
+# Usage:   since_backup $DOMAIN_TO_BACKUP $BACKUP_PATH
+function since_backup() {
+	domain=$1
+	backup_path=$2
 	
+	domain_backup_path="$backup_path/$domain"
+	
+	# 
+	# if folder not exists or no previous backups -> diff=0
+	if [ -d "$domain_backup_path" ]; then
+		last_backup=$(ls -1 "$domain_backup_path" | sort | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}\.[0-9]{2}-[0-9]{2}' | tr -d "\-\." | tail -n1)
+		if [ -z last_backup ]; then
+			last_backup=0
+		fi
+	else
+		last_backup=0
+	fi
+	now=$(echo $BACKUP_DATE | tr -d "\-\.")
+	diff=$(( $now - $last_backup + 1 ))
+	echo $diff
 }
 
 
@@ -267,108 +280,241 @@ function cleanup_old_backups() {
 ### MAIN ###
 ############
 
-while getopts n:c:p:f: flag
-do
-    case "${flag}" in
-        n) DOMAIN_TO_BACKUP="${OPTARG}";;
-        c) BACKUP_COUNT="${OPTARG}";;
-        p) BACKUP_PATH="${OPTARG}";;
-		f) CONFIG_FILE_PATH="${OPTARG}";;
-    esac
-done
-
 BACKUP_DATE=$(date "+%Y-%m-%d.%H-%M")
+
+echo "$(tail -1000 $LOG_PATH)" > $LOG_PATH
 
 echo -e "\n\n" >> $LOG_PATH
 echo "##########################################" >> $LOG_PATH
 echo "# Backup job started at $BACKUP_DATE #" >> $LOG_PATH
 echo "##########################################" >> $LOG_PATH
 
-######################################################################################################
-# If CONFIG_FILE_PATH was not provided - skipping it. If provided - other parameters will be ignored #
-if [ -z "$CONFIG_FILE_PATH" ]; 
+while getopts n:c:p:r:f: flag
+do
+    case "${flag}" in
+        n) DOMAIN_TO_BACKUP="${OPTARG}";;
+        c) BACKUP_COUNT="${OPTARG}";;
+        p) BACKUP_PATH="${OPTARG}";;
+		r) BACKUP_RELEVANCE_PERIOD="${OPTARG}";;
+		f) CONFIG_FILE_PATH="${OPTARG}";;
+    esac
+done
+
+##############################################################
+# If config file provided, using parameters from config file #
+if [[ -n $CONFIG_FILE_PATH ]]; 
 then
-	echo "No CONFIG FILE was provided. Continuing without it" >> $LOG_PATH
-else
-	echo "CONFIG FILE was provided. Ignoring other parameters" >> $LOG_PATH
-	if [ -f "$CONFIG_FILE_PATH" ]; then
-		source "$CONFIG_FILE_PATH"
-	else
-		echo "CONFIG FILE not found. Exiting..." >> $LOG_PATH
-		exit 1
-	fi
-fi
-
-#########################################################################
-# If BACKUP_COUNT was not provided - choosing default "6" copies to keep #
-if [ -z "$BACKUP_COUNT" ]; then
-    echo "No BACKUP COUNT TO KEEP was provided. Setting default '$BACKUP_COUNT_DEFAULT' copies" >> $LOG_PATH
-	BACKUP_COUNT="$BACKUP_COUNT_DEFAULT"
-fi
-
-###############################################
-# Defining, mounting and checking backup path #
-if [ -z "$BACKUP_PATH" ]; then
-    echo "No '-path' was provided. Setting default '$BACKUP_PATH_DEFAULT' path" >> $LOG_PATH
-	BACKUP_PATH="$BACKUP_PATH_DEFAULT"
-fi
-
-#mount_nfs   # Comment if NFS mount is not required
-
-echo "Backup path is '$BACKUP_PATH'" >> $LOG_PATH
-if [ ! -d $BACKUP_PATH ]; then
-	echo "ERROR! Backup path '$BACKUP_PATH' not exists. Exiting..."; >> $LOG_PATH
-	exit 1
-fi
-
-##############################################################################################
-# If no domain was specified, script is grepping all domains on the host and backing them up #
-if [ -z "$DOMAIN_TO_BACKUP" ]
-then
-	echo "No DOMAIN TO BACKUP was provided. Will perform backup for all domains on cluster" >> $LOG_PATH
-	echo "Getting the lists of running and stoped domains" >> $LOG_PATH
-	DOMAINS=$(virsh list --all)
-	DOMAINS_RUNNING=$(echo "$DOMAINS" | awk '$3=="running" {print $2}')
-	DOMAINS_SHUTOFF=$(echo "$DOMAINS" | awk '$3=="shut" {print $2}')
-	echo -e "Following domains were found:" >> $LOG_PATH
-	for DOMAIN_RUNNING in $DOMAINS_RUNNING; do
-		echo -e "\t'$DOMAIN_RUNNING' is running" >> $LOG_PATH
-	done
-	for DOMAIN_SHUTOFF in $DOMAINS_SHUTOFF; do
-		echo -e "\t'$DOMAIN_SHUTOFF' is turned off" >> $LOG_PATH
-	done
-	echo ""
-	
-	for DOMAIN_RUNNING in $DOMAINS_RUNNING; do
-		backup_running $DOMAIN_RUNNING $BACKUP_COUNT
-	done
-	for DOMAIN_SHUTOFF in $DOMAINS_SHUTOFF; do
-		backup_shutoff $DOMAIN_SHUTOFF $BACKUP_COUNT
-	done
-else
-	echo "DOMAIN: '$DOMAIN_TO_BACKUP' was specified" >> $LOG_PATH
-	
-	################################
-	# Getting domain running state #
-	DOMAIN_TO_BACKUP_STATE=$(virsh dominfo --domain $DOMAIN_TO_BACKUP | grep State: | awk '{print $2}')
-	if [ -z "$DOMAIN_TO_BACKUP_STATE" ]; then
-		echo "DOMAIN: '$DOMAIN_TO_BACKUP' was not found or in incorrect state. Exiting." >> $LOG_PATH
-		exit 1
-	fi
-	if [ "$DOMAIN_TO_BACKUP_STATE" == "running" ]
+	echo "Parameter '-f' provided. Will try to use config file" >> $LOG_PATH
+	#
+	# If other params was provided as well - error to avoid human mistakes #
+	if [[ -n $DOMAIN_TO_BACKUP ]] || [[ -n $BACKUP_COUNT ]] || [[ -n $BACKUP_PATH ]] || [[ -n $BACKUP_RELEVANCE_PERIOD ]]
 	then
-		echo "DOMAIN: '$DOMAIN_TO_BACKUP' was found in state 'running'." >> $LOG_PATH
-		backup_running $DOMAIN_TO_BACKUP $BACKUP_COUNT
+		echo "ERROR! Parameter '-f' should be provided alone without other parameters. Exiting..." >> $LOG_PATH
+		exit 1
 	else
-		if [ "$DOMAIN_TO_BACKUP_STATE" == "shut" ]
+		#
+		# If path to file is correct and exists #
+		if [[ -f $CONFIG_FILE_PATH ]]
 		then
-			echo "DOMAIN: '$DOMAIN_TO_BACKUP' was found in state 'shut off'." >> $LOG_PATH
-			backup_shutoff $DOMAIN_TO_BACKUP $BACKUP_COUNT
+			echo "Config file '$CONFIG_FILE_PATH' exists. Importing" >> $LOG_PATH
+			source "$CONFIG_FILE_PATH"
+		else
+			echo "ERROR! Config file '$CONFIG_FILE_PATH' is not exists. Exiting..." >> $LOG_PATH
+			exit 1
 		fi
 	fi
+	
+	#
+	# Checking if arrays in config file are the same length #
+	if [[ ${#DOMAIN_TO_BACKUP[@]} !=  ${#BACKUP_COUNT[@]} || ${#DOMAIN_TO_BACKUP[@]} !=  ${#BACKUP_PATH[@]} || ${#DOMAIN_TO_BACKUP[@]} != ${#BACKUP_RELEVANCE_PERIOD[@]} ]]; then
+		echo "ERROR! Config file syntax is incorrect. Check an array of variables. All arrays should contain exact numbers of values. Exiting..." >> $LOG_PATH
+		exit 1
+	else
+		echo "Config file looks ok" >> $LOG_PATH
+		
+		#
+		# Getting length of arrays from config file. 'For' loop for each domain #
+		cntr=${#DOMAIN_TO_BACKUP[@]}
+		for (( c=0; c<$cntr; c++ )); do
+			#
+			# If DOMAIN_TO_BACKUP is empty - skipping it #
+			if [ -z "${DOMAIN_TO_BACKUP[c]}" ]; then
+				continue
+			fi
+			#
+			# If BACKUP_COUNT was not provided - choosing default copies to keep #
+			if [ -z "${BACKUP_COUNT[c]}" ]; then
+				BACKUP_COUNT[c]="$BACKUP_COUNT_DEFAULT"
+			fi
+			#
+			# If BACKUP_PATH was not provided - setting default $BACKUP_PATH_DEFAULT path #
+			if [ -z "${BACKUP_PATH[c]}" ]; then
+				BACKUP_PATH[c]="$BACKUP_PATH_DEFAULT"
+			fi
+			#
+			# Checking if backup path exists, otherwise - exit #
+			if [ ! -d "${BACKUP_PATH[c]}" ]; then
+				echo "WARNING! '${BACKUP_PATH[c]}' was not found. Skipping domain '${DOMAIN_TO_BACKUP[c]}'" >> $LOG_PATH
+				continue
+			fi
+			#
+			# If BACKUP_RELEVANCE_PERIOD was not provided - choosing default BACKUP_RELEVANCE_PERIOD_DEFAULT #
+			if [ -z "${BACKUP_RELEVANCE_PERIOD[c]}" ]; then
+				BACKUP_RELEVANCE_PERIOD[c]="$BACKUP_RELEVANCE_PERIOD_DEFAULT"
+			fi
+			
+			#
+			# Getting domain state #
+			DOMAIN_TO_BACKUP_STATE=$(virsh dominfo --domain ${DOMAIN_TO_BACKUP[c]} | grep State: | awk '{print $2}')
+			if [ "$DOMAIN_TO_BACKUP_STATE" == "running" ]; then
+				echo "DOMAIN: '${DOMAIN_TO_BACKUP[c]}' was found in state 'running'" >> $LOG_PATH
+				#
+				# Check if RELEVANCE PERIOD is less than difference between today and last backup date #
+				if [ $(( ${BACKUP_RELEVANCE_PERIOD[c]} * 10000 )) -lt $(since_backup ${DOMAIN_TO_BACKUP[c]} ${BACKUP_PATH[c]}) ]; then
+					backup_running ${DOMAIN_TO_BACKUP[c]} ${BACKUP_COUNT[c]} ${BACKUP_PATH[c]}
+				else
+					echo -e "\tskipping current backup of '${DOMAIN_TO_BACKUP[c]}' domain, cause less than '${BACKUP_RELEVANCE_PERIOD[c]}' days passed since last backup" >> $LOG_PATH
+				fi
+
+			elif [ "$DOMAIN_TO_BACKUP_STATE" == "shut" ]; then
+				echo "DOMAIN: '${DOMAIN_TO_BACKUP[c]}' was found in state 'shut off'" >> $LOG_PATH
+				#
+				# Check if RELEVANCE PERIOD is less than difference between today and last backup date #
+				if [ $(( ${BACKUP_RELEVANCE_PERIOD[c]} * 10000 )) -lt $(since_backup ${DOMAIN_TO_BACKUP[c]} ${BACKUP_PATH[c]}) ]; then
+					backup_shutoff ${DOMAIN_TO_BACKUP[c]} ${BACKUP_COUNT[c]} ${BACKUP_PATH[c]}
+				else
+					echo -e "\tskipping current backup of '${DOMAIN_TO_BACKUP[c]}' domain, cause less than '${BACKUP_RELEVANCE_PERIOD[c]}' days passed since last backup" >> $LOG_PATH
+				fi
+			#
+			# Skipping domains, which are now 'running' or 'shutdown' #
+			else
+				echo "DOMAIN: '${DOMAIN_TO_BACKUP[c]}' was not found or in incorrect state. Skipping..." >> $LOG_PATH
+				continue
+			fi
+			
+		done
+		
+	fi
+
+#
+# If config file not provided #
+else
+	echo "Parameter '-f' not provided. Continue" >> $LOG_PATH
+	#
+	# If $DOMAIN_TO_BACKUP specified #
+	if [[ -n $DOMAIN_TO_BACKUP ]]
+	then
+		#
+		# Will backup provided domain
+		echo "DOMAIN: '$DOMAIN_TO_BACKUP' was specified" >> $LOG_PATH
+		#
+		# If BACKUP_COUNT was not provided - choosing default "6" copies to keep #
+		if [ -z "$BACKUP_COUNT" ]; then
+			echo "No BACKUP_COUNT to keep was provided. Setting default '$BACKUP_COUNT_DEFAULT' copies" >> $LOG_PATH
+			BACKUP_COUNT="$BACKUP_COUNT_DEFAULT"
+		fi
+		#
+		# If BACKUP_PATH was not provided - setting default $BACKUP_PATH_DEFAULT path #
+		if [ -z "$BACKUP_PATH" ]; then
+			echo "No BACKUP_PATH was provided. Setting default '$BACKUP_PATH_DEFAULT' path" >> $LOG_PATH
+			BACKUP_PATH="$BACKUP_PATH_DEFAULT"
+		fi
+		if [ ! -d $BACKUP_PATH ]; then
+			echo "ERROR! Backup path '$BACKUP_PATH' not exists. Exiting..." >> $LOG_PATH
+			exit 1
+		fi
+		#
+		# If BACKUP_RELEVANCE_PERIOD was not provided - choosing default BACKUP_RELEVANCE_PERIOD_DEFAULT #
+		if [ -z "$BACKUP_RELEVANCE_PERIOD" ]; then
+			echo "No BACKUP_RELEVANCE_PERIOD was provided. Setting default '$BACKUP_RELEVANCE_PERIOD_DEFAULT' period" >> $LOG_PATH
+			BACKUP_RELEVANCE_PERIOD="$BACKUP_RELEVANCE_PERIOD_DEFAULT"
+		fi
+		
+		#
+		# Getting domain state #
+		DOMAIN_TO_BACKUP_STATE=$(virsh dominfo --domain $DOMAIN_TO_BACKUP | grep State: | awk '{print $2}')
+		if [ "$DOMAIN_TO_BACKUP_STATE" == "running" ]; then
+			echo "DOMAIN: '$DOMAIN_TO_BACKUP' was found in state 'running'" >> $LOG_PATH
+			if [ $(( $BACKUP_RELEVANCE_PERIOD * 10000 )) -lt $(since_backup $DOMAIN_TO_BACKUP $BACKUP_PATH) ]; then
+				backup_running $DOMAIN_TO_BACKUP $BACKUP_COUNT $BACKUP_PATH
+			else
+				echo -e "\tskipping current backup of '$DOMAIN_TO_BACKUP' domain, cause less than '$BACKUP_RELEVANCE_PERIOD' days passed since last backup" >> $LOG_PATH
+			fi
+
+		elif [ "$DOMAIN_TO_BACKUP_STATE" == "shut" ]; then
+			echo "DOMAIN: '$DOMAIN_TO_BACKUP' was found in state 'shut off'" >> $LOG_PATH
+			if [ $(( $BACKUP_RELEVANCE_PERIOD * 10000 )) -lt $(since_backup $DOMAIN_TO_BACKUP $BACKUP_PATH) ]; then
+				backup_shutoff $DOMAIN_TO_BACKUP $BACKUP_COUNT $BACKUP_PATH
+			else
+				echo -e "\tskipping current backup of '$DOMAIN_TO_BACKUP' domain, cause less than '$BACKUP_RELEVANCE_PERIOD' days passed since last backup" >> $LOG_PATH
+			fi
+			
+		else
+			echo "DOMAIN: '$DOMAIN_TO_BACKUP' was not found or in incorrect state. Exiting." >> $LOG_PATH
+			exit 1
+		fi
+		
+	else
+		#
+		# Will try to backup all domains on host #
+		
+		echo "No DOMAIN_TO_BACKUP was provided. Will perform backup for all domains on cluster" >> $LOG_PATH
+		#
+		# If BACKUP_COUNT was not provided - choosing default "6" copies to keep #
+		if [ -z "$BACKUP_COUNT" ]; then
+			echo "No BACKUP_COUNT to keep was provided. Setting default '$BACKUP_COUNT_DEFAULT' copies" >> $LOG_PATH
+			BACKUP_COUNT="$BACKUP_COUNT_DEFAULT"
+		fi
+		#
+		# If BACKUP_PATH was not provided - setting default $BACKUP_PATH_DEFAULT path #
+		if [ -z "$BACKUP_PATH" ]; then
+			echo "No BACKUP_PATH was provided. Setting default '$BACKUP_PATH_DEFAULT' path" >> $LOG_PATH
+			BACKUP_PATH="$BACKUP_PATH_DEFAULT"
+		fi
+		if [ ! -d $BACKUP_PATH ]; then
+			echo "ERROR! Backup path '$BACKUP_PATH' not exists. Exiting..." >> $LOG_PATH
+			exit 1
+		fi
+		#
+		# If BACKUP_RELEVANCE_PERIOD was not provided - choosing default BACKUP_RELEVANCE_PERIOD_DEFAULT #
+		if [ -z "$BACKUP_RELEVANCE_PERIOD" ]; then
+			echo "No BACKUP_RELEVANCE_PERIOD was provided. Setting default '$BACKUP_RELEVANCE_PERIOD_DEFAULT' period" >> $LOG_PATH
+			BACKUP_RELEVANCE_PERIOD="$BACKUP_RELEVANCE_PERIOD_DEFAULT"
+		fi
+		
+		#
+		# Get all domains with their state #
+		echo "Getting the list of running and stopped domains" >> $LOG_PATH
+		DOMAINS=$(virsh list --all)
+		DOMAINS_RUNNING=$(echo "$DOMAINS" | awk '$3=="running" {print $2}')
+		DOMAINS_SHUTOFF=$(echo "$DOMAINS" | awk '$3=="shut" {print $2}')
+		echo -e "Following domains were found:" >> $LOG_PATH
+		for DOMAIN_RUNNING in $DOMAINS_RUNNING; do
+			echo -e "\t'$DOMAIN_RUNNING' is running" >> $LOG_PATH
+		done
+		for DOMAIN_SHUTOFF in $DOMAINS_SHUTOFF; do
+			echo -e "\t'$DOMAIN_SHUTOFF' is turned off" >> $LOG_PATH
+		done
+		echo ""
+		
+		for DOMAIN_RUNNING in $DOMAINS_RUNNING; do
+			if [ $(( $BACKUP_RELEVANCE_PERIOD * 10000 )) -lt $(since_backup $DOMAIN_RUNNING $BACKUP_PATH) ]; then
+				backup_running $DOMAIN_RUNNING $BACKUP_COUNT $BACKUP_PATH
+			else
+				echo -e "\tskipping current backup of '$DOMAIN_RUNNING' domain, cause less than '$BACKUP_RELEVANCE_PERIOD' days passed since last backup" >> $LOG_PATH
+			fi
+		done
+		
+		for DOMAIN_SHUTOFF in $DOMAINS_SHUTOFF; do
+			if [ $(( $BACKUP_RELEVANCE_PERIOD * 10000 )) -lt $(since_backup $DOMAIN_SHUTOFF $BACKUP_PATH) ]; then
+				backup_shutoff $DOMAIN_SHUTOFF $BACKUP_COUNT $BACKUP_PATH
+			else
+				echo -e "\tskipping current backup of '$DOMAIN_SHUTOFF' domain, cause less than '$BACKUP_RELEVANCE_PERIOD' days passed since last backup" >> $LOG_PATH
+			fi
+		done
+	fi
 fi
 
-#echo "Unmounting mount path" >> $LOG_PATH
-#umount $MOUNT_PATH   # Comment if NFS path is not used
 echo "Script finished job successfully" >> $LOG_PATH
-echo ""
+echo "" >> $LOG_PATH
+echo "$(tail -1000 $LOG_PATH)" > $LOG_PATH
